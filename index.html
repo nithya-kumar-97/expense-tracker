@@ -1,262 +1,144 @@
-import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pie_chart/pie_chart.dart';
-import 'dart:convert';
+<!DOCTYPE html>
+<html>
+<head>
 
-void main() {
-  runApp(const ExpenseApp());
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Tracker</title>
+
+<link rel="manifest" href="manifest.json">
+
+<style>
+
+body{
+font-family:Arial;
+background:#eef2f7;
+padding:20px;
 }
 
-class ExpenseApp extends StatelessWidget {
-  const ExpenseApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: "Expense Tracker",
-      theme: ThemeData(primarySwatch: Colors.green),
-      home: const ExpenseHome(),
-    );
-  }
+.container{
+background:white;
+padding:20px;
+border-radius:10px;
 }
 
-class Expense {
-  String item;
-  double amount;
-  int month;
-  String day;
-
-  Expense(this.item, this.amount, this.month, this.day);
-
-  Map<String, dynamic> toJson() =>
-      {"item": item, "amount": amount, "month": month, "day": day};
-
-  factory Expense.fromJson(Map<String, dynamic> json) =>
-      Expense(json["item"], json["amount"], json["month"], json["day"]);
+input{
+width:100%;
+padding:10px;
+margin-top:10px;
 }
 
-class ExpenseHome extends StatefulWidget {
-  const ExpenseHome({super.key});
-
-  @override
-  State<ExpenseHome> createState() => _ExpenseHomeState();
+button{
+width:100%;
+padding:12px;
+margin-top:10px;
+background:#4CAF50;
+color:white;
+border:none;
 }
 
-class _ExpenseHomeState extends State<ExpenseHome> {
-  final TextEditingController controller = TextEditingController();
-  final SpeechToText speech = SpeechToText();
-
-  List<Expense> expenses = [];
-
-  int selectedMonth = DateTime.now().month - 1;
-
-  final months = [
-    "Jan","Feb","Mar","Apr","May","Jun",
-    "Jul","Aug","Sep","Oct","Nov","Dec"
-  ];
-
-  final goodItems = ["fruit", "banana", "milk", "vegetable"];
-  final badItems = ["snacks", "chips", "cola", "junk"];
-
-  @override
-  void initState() {
-    super.initState();
-    loadData();
-  }
-
-  Future loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? data = prefs.getString("expenses");
-
-    if (data != null) {
-      List list = jsonDecode(data);
-      expenses = list.map((e) => Expense.fromJson(e)).toList();
-    }
-
-    setState(() {});
-  }
-
-  Future saveData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setString(
-        "expenses", jsonEncode(expenses.map((e) => e.toJson()).toList()));
-  }
-
-  void addExpense(String text) {
-    text = text.trim();
-    List parts = text.split(" ");
-
-    double? amount = double.tryParse(parts.last);
-
-    if (amount == null) return;
-
-    parts.removeLast();
-
-    String item = parts.join(" ");
-
-    expenses.add(
-        Expense(item, amount, selectedMonth, DateTime.now().toString()));
-
-    saveData();
-
-    setState(() {});
-  }
-
-  void startVoice() async {
-    bool available = await speech.initialize();
-
-    if (!available) return;
-
-    speech.listen(onResult: (result) {
-      if (result.finalResult) {
-        String text = result.recognizedWords;
-
-        List items = text.split(",");
-
-        for (var i in items) {
-          addExpense(i);
-        }
-      }
-    });
-  }
-
-  double get todayTotal {
-    String today = DateTime.now().day.toString();
-
-    return expenses
-        .where((e) =>
-            e.day.contains(today) && e.month == selectedMonth)
-        .fold(0, (a, b) => a + b.amount);
-  }
-
-  double get monthTotal =>
-      expenses
-          .where((e) => e.month == selectedMonth)
-          .fold(0, (a, b) => a + b.amount);
-
-  double get overallTotal =>
-      expenses.fold(0, (a, b) => a + b.amount);
-
-  Map<String, double> pieData() {
-    double good = 0;
-    double bad = 0;
-
-    for (var e in expenses) {
-      if (goodItems.any((g) => e.item.contains(g))) {
-        good += e.amount;
-      }
-      if (badItems.any((b) => e.item.contains(b))) {
-        bad += e.amount;
-      }
-    }
-
-    return {"Good": good, "Bad": bad};
-  }
-
-  Map<int, double> monthlyTotals() {
-    Map<int, double> map = {};
-
-    for (var e in expenses) {
-      map[e.month] = (map[e.month] ?? 0) + e.amount;
-    }
-
-    return map;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var monthMap = monthlyTotals();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Expense Tracker")),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: startVoice,
-        child: const Icon(Icons.mic),
-      ),
-
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-
-        child: Column(
-          children: [
-
-            DropdownButton<int>(
-              value: selectedMonth,
-              items: List.generate(
-                12,
-                (i) => DropdownMenuItem(
-                  value: i,
-                  child: Text(months[i]),
-                ),
-              ),
-              onChanged: (v) {
-                setState(() {
-                  selectedMonth = v!;
-                });
-              },
-            ),
-
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                  labelText: "Add Expense (auto charge 10)"),
-              onSubmitted: (v) {
-                addExpense(v);
-                controller.clear();
-              },
-            ),
-
-            const SizedBox(height: 10),
-
-            Text("Today: ₹$todayTotal"),
-            Text("Month: ₹$monthTotal"),
-            Text("Overall: ₹$overallTotal"),
-
-            const SizedBox(height: 20),
-
-            Expanded(
-              child: ListView(
-                children: expenses
-                    .where((e) => e.month == selectedMonth)
-                    .map((e) => ListTile(
-                          title: Text(e.item),
-                          trailing: Text("₹${e.amount}"),
-                        ))
-                    .toList(),
-              ),
-            ),
-
-            PieChart(
-              dataMap: pieData(),
-              chartRadius: 120,
-            ),
-
-            Wrap(
-              children: monthMap.entries
-                  .map(
-                    (e) => GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedMonth = e.key;
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.all(4),
-                        padding: const EdgeInsets.all(8),
-                        color: Colors.blue.shade100,
-                        child: Text(
-                          "${months[e.key]} ₹${e.value}",
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+.item{
+display:flex;
+justify-content:space-between;
+background:#f5f9ff;
+padding:8px;
+margin-top:5px;
 }
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Expense Tracker</h2>
+
+<input id="expenseInput" placeholder="example: auto charge 10">
+
+<button onclick="addExpense()">Add Expense</button>
+
+<button onclick="startVoice()">🎤 Speak Expense</button>
+
+<h3>Expenses</h3>
+
+<div id="expenseList"></div>
+
+<h3>Total</h3>
+
+<div id="total"></div>
+
+</div>
+
+<script>
+
+let expenses=JSON.parse(localStorage.getItem("expenses"))||[];
+
+function addExpense(){
+
+let text=document.getElementById("expenseInput").value.trim();
+
+let parts=text.split(" ");
+
+let amount=parseFloat(parts.pop());
+
+if(isNaN(amount))return;
+
+let item=parts.join(" ");
+
+expenses.push({item,amount});
+
+localStorage.setItem("expenses",JSON.stringify(expenses));
+
+render();
+
+document.getElementById("expenseInput").value="";
+
+}
+
+function render(){
+
+let list="";
+let total=0;
+
+expenses.forEach(e=>{
+
+list+=`<div class="item">${e.item}<span>₹${e.amount}</span></div>`;
+
+total+=e.amount;
+
+});
+
+document.getElementById("expenseList").innerHTML=list;
+document.getElementById("total").innerHTML="₹ "+total;
+
+}
+
+function startVoice(){
+
+let recognition=new webkitSpeechRecognition();
+
+recognition.onresult=function(event){
+
+let speech=event.results[0][0].transcript;
+
+document.getElementById("expenseInput").value=speech;
+
+addExpense();
+
+};
+
+recognition.start();
+
+}
+
+render();
+
+if('serviceWorker' in navigator){
+navigator.serviceWorker.register('service-worker.js');
+}
+
+</script>
+
+</body>
+</html>
